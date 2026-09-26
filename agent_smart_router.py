@@ -9,7 +9,7 @@ import logging
 from openai import OpenAI
 from filelock import FileLock, Timeout
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # Optional import for anthropic
 try:
@@ -174,11 +174,38 @@ def _save_auto_cache(provider, mode, best_model):
         pass
 
 
+VERIFY_TIMEOUT = 8          # seconds per live verification call
+MAX_VERIFY_CANDIDATES = 3   # how many top-scored candidates to actually try before giving up
+
+
+def _verify_chat_model(provider, provider_config, model_id):
+    """Send one minimal real chat request to confirm this model id actually serves
+    chat/completions (not TTS, embeddings, a gated model needing terms acceptance, etc.).
+    This is the real safety net - NON_CHAT_KEYWORDS is only a cheap pre-filter to cut
+    down how many of these we need to make; the keyword list will always be incomplete
+    on its own (see: 'orpheus-v1-english', a TTS model with no matching keyword)."""
+    try:
+        if provider == "anthropic":
+            client = anthropic.Anthropic(api_key=provider_config["api_key"], timeout=VERIFY_TIMEOUT)
+            client.messages.create(model=model_id, max_tokens=1, messages=[{"role": "user", "content": "hi"}])
+        else:
+            client = OpenAI(base_url=provider_config["base_url"], api_key=provider_config["api_key"], timeout=VERIFY_TIMEOUT)
+            client.chat.completions.create(model=model_id, messages=[{"role": "user", "content": "hi"}], max_tokens=1)
+        return True
+    except Exception as e:
+        logger.debug(f"Auto-discovery: '{model_id}' failed live verification: {e}")
+        return False
+
+
 def discover_best_model(provider, mode="smart", force_refresh=False):
     """Return the best available chat model id for `provider` under `mode`
     ("smart" = biggest/most capable, "fast" = smallest/snappiest), using a
     24h local cache per (provider, mode). Returns None on any failure so
-    callers can fall back gracefully."""
+    callers can fall back gracefully.
+
+    Only runs on a cache miss (once per day per provider/mode), so paying
+    a few extra live-verification calls here is worth it for correctness -
+    every call after this one comes straight from cache."""
     if mode not in _SCORERS:
         logger.warning(f"Auto-discovery: unknown mode '{mode}', defaulting to 'smart'.")
         mode = "smart"
@@ -208,15 +235,23 @@ def discover_best_model(provider, mode="smart", force_refresh=False):
         logger.warning(f"Auto-discovery failed for '{provider}': {e}")
         return None
 
+    # Cheap pre-filter by name, purely to reduce how many live calls we make below.
     chat_candidates = [m for m in model_ids if _is_chat_candidate(m)]
     if not chat_candidates:
-        logger.warning(f"Auto-discovery: no chat-capable models found for '{provider}' (got {len(model_ids)} total, all filtered out).")
+        logger.warning(f"Auto-discovery: no chat-capable models found for '{provider}' (got {len(model_ids)} total, all filtered out by name).")
         return None
 
-    best_model = max(chat_candidates, key=_SCORERS[mode])
-    logger.info(f"Auto-discovery ({mode}): picked '{best_model}' for '{provider}' out of {len(chat_candidates)}/{len(model_ids)} chat-capable candidates.")
-    _save_auto_cache(provider, mode, best_model)
-    return best_model
+    ranked = sorted(chat_candidates, key=_SCORERS[mode], reverse=True)
+
+    for candidate in ranked[:MAX_VERIFY_CANDIDATES]:
+        if _verify_chat_model(provider, provider_config, candidate):
+            logger.info(f"Auto-discovery ({mode}): picked '{candidate}' for '{provider}' (live-verified) out of {len(chat_candidates)}/{len(model_ids)} name-filtered candidates.")
+            _save_auto_cache(provider, mode, candidate)
+            return candidate
+        logger.warning(f"Auto-discovery ({mode}): '{candidate}' failed live verification (gated, non-chat, or otherwise unusable), trying next candidate.")
+
+    logger.warning(f"Auto-discovery ({mode}): none of the top {min(MAX_VERIFY_CANDIDATES, len(ranked))} name-filtered candidates for '{provider}' passed live verification.")
+    return None
 
 
 class CircuitBreaker:
