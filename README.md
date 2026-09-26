@@ -7,10 +7,11 @@
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![CI](https://github.com/cadakerem/agent-smart-router/actions/workflows/ci.yml/badge.svg)
 
-## ⚡ Features
+## 🚀 Features
 
 - **Multi-Provider Support:** Seamlessly route requests to `nvidia`, `groq`, `openai`, `anthropic`, or `gemini`.
-- **Automatic Fallbacks:** Provide a comma-separated list of models. If one fails, it instantly falls back to the next.
+- **Dynamic Model Discovery:** Never hardcode a model name again. Use `auto-smart` or `auto-fast` and the router will auto-select the best model, backed by an active Liveness Verification Ping to drop fake/gated candidates.
+- **Automatic Fallbacks:** Provide a comma-separated list of models (or auto aliases). If one fails, it instantly falls back to the next.
 - **Circuit Breaker:** Built-in health tracking and cooldowns to prevent spamming dead endpoints.
 - **Reasoning Extraction:** Automatically extracts and formats hidden `<thought>` or `reasoning` blocks (e.g., from Nemotron or DeepSeek).
 - **Streaming Native:** Built on the official OpenAI SDK for fast and reliable streaming chunks.
