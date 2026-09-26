@@ -4,3 +4,5 @@ __pycache__/
 keys.json
 circuit_breaker.json
 circuit_breaker.json.lock
+# Auto-Discovery Caches
+auto_models_cache_*.json
