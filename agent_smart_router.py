@@ -9,7 +9,7 @@ import logging
 from openai import OpenAI
 from filelock import FileLock, Timeout
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # Optional import for anthropic
 try:
@@ -59,56 +59,100 @@ PROVIDERS = {
 # ---------------------------------------------------------------------------
 # Dynamic Model Auto-Discovery
 #
-# Usage: pass "provider:auto" instead of a hardcoded model name, e.g.
-#   agent-smart-router -m "groq:auto,nvidia:auto" -p "..."
+# Usage: pass "provider:auto-smart" or "provider:auto-fast" instead of a
+# hardcoded model name, e.g.
+#   agent-smart-router -m "groq:auto-smart,nvidia:auto-fast" -p "..."
+# ("auto" and "auto-max" are kept as aliases of "auto-smart" for backwards
+# compatibility with existing scripts/cron jobs.)
 #
-# The router hits the provider's /models endpoint, scores every candidate by
-# parameter size, generation/version, and role keywords, and picks the best
-# one. Results are cached locally for AUTO_CACHE_TTL seconds so normal calls
-# never pay the discovery latency.
+# The router hits the provider's /models endpoint, drops anything that isn't
+# a general-purpose chat/completions model (guardrail filters, moderation,
+# embeddings, TTS/STT, rerankers - these show up in /models but will 400 on
+# a normal chat request), scores what's left, and picks the best one.
+# Results are cached locally per (provider, mode) for AUTO_CACHE_TTL seconds
+# so normal calls never pay the discovery latency.
 # ---------------------------------------------------------------------------
 
-def _score_model_id(model_id, mode="smart"):
-    """Higher score = better fit based on mode (fast vs smart/max)."""
+# Model ids containing any of these are never valid chat-completion candidates,
+# regardless of mode - excluding them up front is what "auto-fast" needs to
+# avoid latching onto a tiny 86M-parameter safety/guard classifier just
+# because it has the smallest size in its name.
+NON_CHAT_KEYWORDS = (
+    "guard", "moderation", "safety", "embed", "embedding", "rerank",
+    "whisper", "tts", "speech", "audio", "clip", "classifier",
+)
+
+
+def _is_chat_candidate(model_id):
+    name = model_id.lower()
+    return not any(kw in name for kw in NON_CHAT_KEYWORDS)
+
+
+def _score_model_smart(model_id):
+    """Higher score = bigger / newer / more capable. Used by auto-smart."""
     name = model_id.lower()
     score = 0.0
 
+    # Parameter size, e.g. "8b", "70b", "405b" -> biggest wins, weighted heavily.
     size_matches = re.findall(r'(\d+(?:\.\d+)?)\s*b(?!\w)', name)
-    param_size = max(float(s) for s in size_matches) if size_matches else 0.0
-    name_wo_size = re.sub(r'\d+(?:\.\d+)?\s*b(?!\w)', '', name)
-
-    if mode == "fast":
-        if param_size > 0:
-            score -= param_size  # Smaller is faster
-        for kw, bonus in (("instant", 10), ("flash", 10), ("mini", 10), ("haiku", 10), ("lite", 5), ("8b", 5)):
-            if kw in name:
-                score += bonus
-        for kw, penalty in (("pro", -10), ("70b", -10), ("405b", -20), ("deprecated", -100)):
-            if kw in name:
-                score += penalty
+    if size_matches:
+        score += max(float(s) for s in size_matches) * 10
+        name_wo_size = re.sub(r'\d+(?:\.\d+)?\s*b(?!\w)', '', name)
     else:
-        # Default smart/max
-        if param_size > 0:
-            score += param_size * 10
-        for kw, penalty in (("mini", -2), ("lite", -2), ("tiny", -3), ("preview", -1), ("deprecated", -100)):
-            if kw in name:
-                score += penalty
-        for kw, bonus in (("instruct", 3), ("versatile", 3), ("reasoning", 4), ("pro", 5)):
-            if kw in name:
-                score += bonus
+        name_wo_size = name
 
+    # Any remaining digits are treated as generation/version numbers,
+    # e.g. "llama-4", "gemini-2.5", "v3.3" -> higher wins.
     version_matches = re.findall(r'(\d+(?:\.\d+)?)', name_wo_size)
     if version_matches:
-        score += max(float(v) for v in version_matches) * (2 if mode == "fast" else 5)
+        score += max(float(v) for v in version_matches) * 5
+
+    for kw, bonus in (("instruct", 3), ("versatile", 3), ("reasoning", 4), ("chat", 1)):
+        if kw in name:
+            score += bonus
+    for kw, penalty in (("mini", -2), ("lite", -2), ("tiny", -3), ("preview", -1), ("deprecated", -100)):
+        if kw in name:
+            score += penalty
 
     return score
 
 
-def _auto_cache_path(provider, mode="smart"):
+def _score_model_fast(model_id):
+    """Higher score = smaller / snappier chat model. Used by auto-fast.
+    NON_CHAT_KEYWORDS models are filtered out before this ever runs, so
+    "smallest wins" can't land on a non-chat model anymore."""
+    name = model_id.lower()
+    score = 0.0
+
+    size_matches = re.findall(r'(\d+(?:\.\d+)?)\s*b(?!\w)', name)
+    if size_matches:
+        score -= max(float(s) for s in size_matches) * 10  # smaller size = higher score
+        name_wo_size = re.sub(r'\d+(?:\.\d+)?\s*b(?!\w)', '', name)
+    else:
+        name_wo_size = name
+
+    version_matches = re.findall(r'(\d+(?:\.\d+)?)', name_wo_size)
+    if version_matches:
+        score += max(float(v) for v in version_matches) * 5  # still prefer the newer generation
+
+    for kw, bonus in (("instant", 4), ("flash", 4), ("turbo", 4), ("mini", 3), ("lite", 3), ("small", 2), ("instruct", 1)):
+        if kw in name:
+            score += bonus
+    for kw, penalty in (("preview", -1), ("deprecated", -100)):
+        if kw in name:
+            score += penalty
+
+    return score
+
+
+_SCORERS = {"smart": _score_model_smart, "fast": _score_model_fast}
+
+
+def _auto_cache_path(provider, mode):
     return os.path.join(SCRIPT_DIR, f"auto_models_cache_{provider}_{mode}.json")
 
 
-def _load_auto_cache(provider, mode="smart"):
+def _load_auto_cache(provider, mode):
     path = _auto_cache_path(provider, mode)
     if os.path.exists(path):
         try:
@@ -131,8 +175,14 @@ def _save_auto_cache(provider, mode, best_model):
 
 
 def discover_best_model(provider, mode="smart", force_refresh=False):
-    """Return the best available model id for `provider`, using a 24h local cache.
-    Returns None on any failure so callers can fall back gracefully."""
+    """Return the best available chat model id for `provider` under `mode`
+    ("smart" = biggest/most capable, "fast" = smallest/snappiest), using a
+    24h local cache per (provider, mode). Returns None on any failure so
+    callers can fall back gracefully."""
+    if mode not in _SCORERS:
+        logger.warning(f"Auto-discovery: unknown mode '{mode}', defaulting to 'smart'.")
+        mode = "smart"
+
     if not force_refresh:
         cached = _load_auto_cache(provider, mode)
         if cached:
@@ -158,11 +208,13 @@ def discover_best_model(provider, mode="smart", force_refresh=False):
         logger.warning(f"Auto-discovery failed for '{provider}': {e}")
         return None
 
-    if not model_ids:
+    chat_candidates = [m for m in model_ids if _is_chat_candidate(m)]
+    if not chat_candidates:
+        logger.warning(f"Auto-discovery: no chat-capable models found for '{provider}' (got {len(model_ids)} total, all filtered out).")
         return None
 
-    best_model = max(model_ids, key=lambda m: _score_model_id(m, mode=mode))
-    logger.info(f"Auto-discovery ({mode}): picked '{best_model}' for '{provider}' out of {len(model_ids)} candidates.")
+    best_model = max(chat_candidates, key=_SCORERS[mode])
+    logger.info(f"Auto-discovery ({mode}): picked '{best_model}' for '{provider}' out of {len(chat_candidates)}/{len(model_ids)} chat-capable candidates.")
     _save_auto_cache(provider, mode, best_model)
     return best_model
 
@@ -242,6 +294,10 @@ class CircuitBreaker:
             pass
 
 
+# "auto" / "auto-max" are kept as aliases of "auto-smart" for backwards compatibility.
+_AUTO_ALIASES = {"auto": "smart", "auto-max": "smart", "auto-smart": "smart", "auto-fast": "fast"}
+
+
 def parse_model(model_string, force_refresh_auto=False):
     if ":" in model_string:
         provider, model = model_string.split(":", 1)
@@ -249,17 +305,12 @@ def parse_model(model_string, force_refresh_auto=False):
     else:
         provider, model = "nvidia", model_string.strip()
 
-    if model.lower() in ("auto", "auto-max", "auto-smart"):
-        resolved = discover_best_model(provider, mode="smart", force_refresh=force_refresh_auto)
-    elif model.lower() == "auto-fast":
-        resolved = discover_best_model(provider, mode="fast", force_refresh=force_refresh_auto)
-    else:
-        resolved = None
-
-    if model.lower() in ("auto", "auto-max", "auto-smart", "auto-fast"):
+    mode = _AUTO_ALIASES.get(model.lower())
+    if mode:
+        resolved = discover_best_model(provider, mode=mode, force_refresh=force_refresh_auto)
         if resolved:
             return provider, resolved
-        logger.error(f"Auto-discovery unavailable for '{provider}' and no static fallback was given.")
+        logger.error(f"Auto-discovery unavailable for '{provider}' ({mode}) and no static fallback was given.")
         return provider, model  # will fail fast in query_ai (model not found / no key)
 
     return provider, model
@@ -338,7 +389,7 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
 def main():
     parser = argparse.ArgumentParser(description="Smart Router: A fault-tolerant CLI tool for LLM delegation.")
     parser.add_argument("-v", "--version", action="version", version=f"Smart Router v{__version__}")
-    parser.add_argument("-m", "--models", required=True, help="Comma-separated list of provider:model fallbacks (e.g. nvidia:nemotron,groq:llama3, or groq:auto).")
+    parser.add_argument("-m", "--models", required=True, help="Comma-separated list of provider:model fallbacks (e.g. nvidia:nemotron,groq:llama3, or groq:auto-smart / groq:auto-fast).")
     parser.add_argument("-p", "--prompt", help="The prompt text to send to the model.")
     parser.add_argument("-f", "--file", help="Path to a text file containing the prompt.")
     parser.add_argument("--project", default="default", help="Project ID for isolating circuit breaker state.")
