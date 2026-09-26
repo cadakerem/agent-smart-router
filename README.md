@@ -15,6 +15,21 @@
 - **Reasoning Extraction:** Automatically extracts and formats hidden `<thought>` or `reasoning` blocks (e.g., from Nemotron or DeepSeek).
 - **Streaming Native:** Built on the official OpenAI SDK for fast and reliable streaming chunks.
 
+
+## 🔍 Auto Model Discovery
+
+Instead of hardcoding a model name, you can let the router pick one for you dynamically:
+
+```bash
+agent-smart-router -m "groq:auto-smart" -p "Explain quantum entanglement."
+agent-smart-router -m "groq:auto-fast" -p "Quick sanity check please."
+```
+
+- `auto-smart` (aliases: `auto`, `auto-max`) picks the biggest / most capable model currently served by the provider.
+- `auto-fast` picks the smallest / snappiest one.
+
+Both query the provider's `/models` endpoint, live-verify the top-scored candidates with a minimal chat request (so gated/TTS/embedding models are never selected), and cache the result for 24h in `auto_models_cache_<provider>_<mode>.json`. Force a fresh lookup with `--refresh-models`.
+
 ## 📦 Installation
 
 Since the package is published on PyPI, you can install it globally via `pip`:
