@@ -68,41 +68,48 @@ PROVIDERS = {
 # never pay the discovery latency.
 # ---------------------------------------------------------------------------
 
-def _score_model_id(model_id):
-    """Higher score = bigger / newer / more capable, based on the model id string alone."""
+def _score_model_id(model_id, mode="smart"):
+    """Higher score = better fit based on mode (fast vs smart/max)."""
     name = model_id.lower()
     score = 0.0
 
-    # Parameter size, e.g. "8b", "70b", "405b" -> biggest wins, weighted heavily.
     size_matches = re.findall(r'(\d+(?:\.\d+)?)\s*b(?!\w)', name)
-    if size_matches:
-        score += max(float(s) for s in size_matches) * 10
-        name_wo_size = re.sub(r'\d+(?:\.\d+)?\s*b(?!\w)', '', name)
-    else:
-        name_wo_size = name
+    param_size = max(float(s) for s in size_matches) if size_matches else 0.0
+    name_wo_size = re.sub(r'\d+(?:\.\d+)?\s*b(?!\w)', '', name)
 
-    # Any remaining digits are treated as generation/version numbers,
-    # e.g. "llama-4", "gemini-2.5", "v3.3" -> higher wins.
+    if mode == "fast":
+        if param_size > 0:
+            score -= param_size  # Smaller is faster
+        for kw, bonus in (("instant", 10), ("flash", 10), ("mini", 10), ("haiku", 10), ("lite", 5), ("8b", 5)):
+            if kw in name:
+                score += bonus
+        for kw, penalty in (("pro", -10), ("70b", -10), ("405b", -20), ("deprecated", -100)):
+            if kw in name:
+                score += penalty
+    else:
+        # Default smart/max
+        if param_size > 0:
+            score += param_size * 10
+        for kw, penalty in (("mini", -2), ("lite", -2), ("tiny", -3), ("preview", -1), ("deprecated", -100)):
+            if kw in name:
+                score += penalty
+        for kw, bonus in (("instruct", 3), ("versatile", 3), ("reasoning", 4), ("pro", 5)):
+            if kw in name:
+                score += bonus
+
     version_matches = re.findall(r'(\d+(?:\.\d+)?)', name_wo_size)
     if version_matches:
-        score += max(float(v) for v in version_matches) * 5
-
-    for kw, bonus in (("instruct", 3), ("versatile", 3), ("reasoning", 4), ("chat", 1)):
-        if kw in name:
-            score += bonus
-    for kw, penalty in (("mini", -2), ("lite", -2), ("tiny", -3), ("preview", -1), ("deprecated", -100)):
-        if kw in name:
-            score += penalty
+        score += max(float(v) for v in version_matches) * (2 if mode == "fast" else 5)
 
     return score
 
 
-def _auto_cache_path(provider):
-    return os.path.join(SCRIPT_DIR, f"auto_models_cache_{provider}.json")
+def _auto_cache_path(provider, mode="smart"):
+    return os.path.join(SCRIPT_DIR, f"auto_models_cache_{provider}_{mode}.json")
 
 
-def _load_auto_cache(provider):
-    path = _auto_cache_path(provider)
+def _load_auto_cache(provider, mode="smart"):
+    path = _auto_cache_path(provider, mode)
     if os.path.exists(path):
         try:
             with open(path, 'r', encoding='utf-8') as f:
@@ -114,8 +121,8 @@ def _load_auto_cache(provider):
     return None
 
 
-def _save_auto_cache(provider, best_model):
-    path = _auto_cache_path(provider)
+def _save_auto_cache(provider, mode, best_model):
+    path = _auto_cache_path(provider, mode)
     try:
         with open(path, 'w', encoding='utf-8') as f:
             json.dump({'timestamp': time.time(), 'best_model': best_model}, f)
@@ -123,11 +130,11 @@ def _save_auto_cache(provider, best_model):
         pass
 
 
-def discover_best_model(provider, force_refresh=False):
+def discover_best_model(provider, mode="smart", force_refresh=False):
     """Return the best available model id for `provider`, using a 24h local cache.
     Returns None on any failure so callers can fall back gracefully."""
     if not force_refresh:
-        cached = _load_auto_cache(provider)
+        cached = _load_auto_cache(provider, mode)
         if cached:
             return cached
 
@@ -154,9 +161,9 @@ def discover_best_model(provider, force_refresh=False):
     if not model_ids:
         return None
 
-    best_model = max(model_ids, key=_score_model_id)
-    logger.info(f"Auto-discovery: picked '{best_model}' for '{provider}' out of {len(model_ids)} candidates.")
-    _save_auto_cache(provider, best_model)
+    best_model = max(model_ids, key=lambda m: _score_model_id(m, mode=mode))
+    logger.info(f"Auto-discovery ({mode}): picked '{best_model}' for '{provider}' out of {len(model_ids)} candidates.")
+    _save_auto_cache(provider, mode, best_model)
     return best_model
 
 
@@ -242,8 +249,14 @@ def parse_model(model_string, force_refresh_auto=False):
     else:
         provider, model = "nvidia", model_string.strip()
 
-    if model.lower() in ("auto", "auto-max"):
-        resolved = discover_best_model(provider, force_refresh=force_refresh_auto)
+    if model.lower() in ("auto", "auto-max", "auto-smart"):
+        resolved = discover_best_model(provider, mode="smart", force_refresh=force_refresh_auto)
+    elif model.lower() == "auto-fast":
+        resolved = discover_best_model(provider, mode="fast", force_refresh=force_refresh_auto)
+    else:
+        resolved = None
+
+    if model.lower() in ("auto", "auto-max", "auto-smart", "auto-fast"):
         if resolved:
             return provider, resolved
         logger.error(f"Auto-discovery unavailable for '{provider}' and no static fallback was given.")
