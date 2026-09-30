@@ -193,7 +193,11 @@ def _verify_chat_model(provider, provider_config, model_id):
             client.chat.completions.create(model=model_id, messages=[{"role": "user", "content": "hi"}], max_tokens=1)
         return True
     except Exception as e:
-        logger.debug(f"Auto-discovery: '{model_id}' failed live verification: {e}")
+        error_str = str(e).lower()
+        if provider == "nvidia" and "404" in error_str and "not found for account" in error_str:
+            logger.warning(f"Auto-discovery: Nvidia model '{model_id}' requires EULA approval. Please visit https://build.nvidia.com to search and accept the terms for this model.")
+        else:
+            logger.debug(f"Auto-discovery: '{model_id}' failed live verification: {e}")
         return False
 
 
@@ -422,6 +426,9 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
 
 
 def main():
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+
     parser = argparse.ArgumentParser(description="Smart Router: A fault-tolerant CLI tool for LLM delegation.")
     parser.add_argument("-v", "--version", action="version", version=f"Smart Router v{__version__}")
     parser.add_argument("-m", "--models", required=True, help="Comma-separated list of provider:model fallbacks (e.g. nvidia:nemotron,groq:llama3, or groq:auto-smart / groq:auto-fast).")
