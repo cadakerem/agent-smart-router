@@ -48,9 +48,9 @@ The Smart Router intercepts this behavior automatically and will print a clear w
 
 **Bypassing Auto-Discovery (Manual Mode):**
 If you don't want to deal with EULA approvals for new models, you can explicitly hardcode a model that you know already works for your account. This completely bypasses the auto-discovery mechanism:
-`ash
+```bash
 agent-smart-router -m "nvidia:meta/llama-3.2-11b-vision-instruct,groq:auto-smart" -p "Hello"
-`
+```
 
 
 ## 📦 Installation
@@ -124,3 +124,20 @@ agent-smart-router -m "groq:llama3" -p "Hello" --project "agent-core" --max-fail
 The router uses a `FileLock`-backed JSON state (`circuit_breaker.json`) to track failures across concurrent runs. 
 If an endpoint times out or returns a 5xx error more than `MAX_FAILURES` times, the circuit trips and forces the router to skip that endpoint for the next 120 seconds, immediately trying the next fallback model.
 
+
+
+## 🤝 Contributing
+
+Contributions are always welcome! 
+
+1. Fork the repository.
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
+4. Push to the branch (`git push origin feature/AmazingFeature`).
+5. Open a Pull Request.
+
+Please make sure to update tests as appropriate.
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
