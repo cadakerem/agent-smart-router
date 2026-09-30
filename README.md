@@ -1,4 +1,4 @@
-﻿# Agent Smart Router (CLI Delegation Tool)
+# Agent Smart Router (CLI Delegation Tool)
 
 > A lightweight, fault-tolerant CLI tool for delegating LLM tasks to expert models across multiple providers (Nvidia NIM, Groq, OpenAI, Anthropic Claude, Gemini).
 
@@ -30,6 +30,28 @@ agent-smart-router -m "groq:auto-fast" -p "Quick sanity check please."
 - `auto-fast` picks the smallest / snappiest one.
 
 Both query the provider's `/models` endpoint, live-verify the top-scored candidates with a minimal chat request (so gated/TTS/embedding models are never selected), and cache the result for 24h in `auto_models_cache_<provider>_<mode>.json`. Force a fresh lookup with `--refresh-models`.
+
+
+## ⚠️ Troubleshooting & Known Quirks
+
+### Nvidia EULA (404 Not Found) Handling
+Nvidia NIM requires users to manually accept the **End User License Agreement (EULA)** for certain models on their website before using them via API. If you haven't accepted the EULA for a dynamically discovered model, Nvidia returns a cryptic 404 Not Found error instead of a billing/auth error.
+
+The Smart Router intercepts this behavior automatically and will print a clear warning:
+[WARNING] Auto-discovery: Nvidia model 'ibm/granite...' requires EULA approval. Please visit https://build.nvidia.com to search and accept the terms for this model.
+
+**How to Fix:**
+1. Log into the [Nvidia Build Portal](https://build.nvidia.com).
+2. Search for the exact model name shown in the warning.
+3. Click to run a quick test prompt in their browser UI to accept the terms.
+4. Run the router again—it will now seamlessly pick up the model.
+
+**Bypassing Auto-Discovery (Manual Mode):**
+If you don't want to deal with EULA approvals for new models, you can explicitly hardcode a model that you know already works for your account. This completely bypasses the auto-discovery mechanism:
+`ash
+agent-smart-router -m "nvidia:meta/llama-3.2-11b-vision-instruct,groq:auto-smart" -p "Hello"
+`
+
 
 ## 📦 Installation
 
