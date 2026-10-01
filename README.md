@@ -18,8 +18,6 @@
 - **Libraries**: openai, filelock, anthropic
 - **Design Pattern**: Circuit Breaker, Chain of Responsibility (Fallback Routing), and Dynamic Caching.
 
-## 🏗️ Architecture Overview
-
 The router uses a `FileLock`-backed JSON state (`circuit_breaker.json`) to track failures across concurrent runs. 
 If an endpoint times out or returns a 5xx error more than `MAX_FAILURES` times, the circuit trips and forces the router to skip that endpoint for the next 120 seconds, immediately trying the next fallback model.
 
@@ -61,8 +59,6 @@ agent-smart-router -m "nvidia:meta/llama-3.2-11b-vision-instruct" -p "Hello"
 
 ## 🧑‍💻 Developer & Contributions
 Developed by Kerem Barbaros Karnabat (@cadakerem).
-
-> **Note on Repository Structure:** [TODO: Add any specific notes about the repository structure here, e.g., source vs build artifacts.]
 
 Contributions, issues, and feature requests are welcome! Feel free to check the [Issues page](../../issues).
 
