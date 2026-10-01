@@ -2,7 +2,6 @@
 
 > A lightweight, fault-tolerant CLI tool for delegating LLM tasks to expert models across multiple providers (Nvidia NIM, Groq, OpenAI, Anthropic Claude, Gemini).
 
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 ## ⚡ Features
 - **Multi-Provider Support**: Seamlessly route requests to `nvidia`, `groq`, `openai`, `anthropic`, or `gemini`.
