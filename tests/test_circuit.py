@@ -1,7 +1,7 @@
 import os
 import time
 import pytest
-from agent_smart_router import CircuitBreaker
+from llm_proxy_cli import CircuitBreaker
 
 def test_circuit_breaker_isolation(tmp_path):
     # Test that different projects don't share state

@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import agent_smart_router as router
+import llm_proxy_cli as router
 
 
 def make_openai_chunk(content=None, reasoning=None):

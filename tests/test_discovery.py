@@ -1,11 +1,11 @@
 """
-Unit tests for the auto-discovery scoring/filtering logic in agent_smart_router.py.
+Unit tests for the auto-discovery scoring/filtering logic in llm_proxy_cli.py.
 These are all pure functions - no network calls, no API keys needed - so they
 run in CI the same way test_circuit.py does. The live verification call itself
 (_verify_chat_model) is intentionally NOT unit tested here since it requires a
 real API round trip; that's what the --refresh-models manual smoke test is for.
 """
-import agent_smart_router as router
+import llm_proxy_cli as router
 
 
 def test_is_chat_candidate_filters_known_non_chat_models():
