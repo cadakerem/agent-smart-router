@@ -46,3 +46,46 @@ def test_circuit_breaker_success_reset(tmp_path):
     cb.record_success("modelC")
     circuit = cb.load()
     assert "modelC" not in circuit or circuit["modelC"]["failures"] == 0
+
+import time
+
+def test_circuit_breaker_decay():
+    cb = CircuitBreaker("decay_test", max_failures=2, cooldown_seconds=60)
+    
+    # Clean state
+    if os.path.exists(cb.circuit_file):
+        os.remove(cb.circuit_file)
+        
+    import llm_proxy_cli
+    
+    # Mock time.time to simulate passage of time
+    original_time = time.time
+    current_mock_time = original_time()
+    
+    def mock_time():
+        return current_mock_time
+        
+    llm_proxy_cli.time.time = mock_time
+    
+    try:
+        # Failure 1 at T=0
+        cb.record_failure("test:model")
+        assert cb.check_health("test:model") == True
+        
+        # Advance time by 400 seconds (past 300s decay threshold)
+        current_mock_time += 400
+        
+        # Failure 2 at T=400
+        # This should reset the counter to 0 before adding 1, so it won't trip (max_failures=2)
+        cb.record_failure("test:model")
+        assert cb.check_health("test:model") == True
+        
+        # Failure 3 immediately after (T=400)
+        # Counter becomes 2 -> trips!
+        cb.record_failure("test:model")
+        assert cb.check_health("test:model") == False
+        
+    finally:
+        llm_proxy_cli.time.time = original_time
+        if os.path.exists(cb.circuit_file):
+            os.remove(cb.circuit_file)

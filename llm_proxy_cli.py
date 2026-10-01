@@ -336,8 +336,16 @@ class CircuitBreaker:
             with FileLock(self.lock_file, timeout=5):
                 circuit = self.load()
                 if model_id not in circuit:
-                    circuit[model_id] = {'failures': 0, 'cooldown_until': 0}
+                    circuit[model_id] = {'failures': 0, 'cooldown_until': 0, 'last_failure_time': 0}
+                
+                # Decay old failures after 300 seconds
+                last_fail = circuit[model_id].get('last_failure_time', 0)
+                if time.time() - last_fail > 300:
+                    circuit[model_id]['failures'] = 0
+                
                 circuit[model_id]['failures'] += 1
+                circuit[model_id]['last_failure_time'] = time.time()
+                
                 if circuit[model_id]['failures'] >= self.max_failures:
                     circuit[model_id]['cooldown_until'] = time.time() + self.cooldown_seconds
                     circuit[model_id]['failures'] = 0
