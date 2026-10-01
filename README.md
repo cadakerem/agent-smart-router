@@ -1,4 +1,4 @@
-# Agent Smart Router
+﻿# LLM Proxy CLI
 
 > A lightweight, fault-tolerant CLI tool for delegating LLM tasks to expert models across multiple providers (Nvidia NIM, Groq, OpenAI, Anthropic Claude, Gemini).
 
@@ -25,11 +25,11 @@ If an endpoint times out or returns a 5xx error more than `MAX_FAILURES` times, 
 
 ```bash
 # Install via pip
-pip install agent-smart-router
+pip install llm-proxy-cli
 
 # Or for local development:
-# git clone https://github.com/cadakerem/agent-smart-router.git
-# cd agent-smart-router
+# git clone https://github.com/cadakerem/llm-proxy-cli.git
+# cd llm-proxy-cli
 # pip install -e .
 ```
 
@@ -38,10 +38,10 @@ pip install agent-smart-router
 ```bash
 # Example command
 # Heavy Coding Task (Nvidia Laguna -> Groq Fallback)
-agent-smart-router -m "nvidia:poolside/laguna-xs-2.1,groq:groq/compound" -p "Write a python script to parse logs."
+llm-proxy-cli -m "nvidia:poolside/laguna-xs-2.1,groq:groq/compound" -p "Write a python script to parse logs."
 
 # Auto Model Discovery
-agent-smart-router -m "groq:auto-smart" -p "Explain quantum entanglement."
+llm-proxy-cli -m "groq:auto-smart" -p "Explain quantum entanglement."
 ```
 
 ### ⚠️ Troubleshooting & Known Quirks: Nvidia EULA (404 Not Found)
@@ -53,13 +53,13 @@ The Smart Router intercepts this behavior automatically and will print a clear w
 2. Search for the exact model name shown in the warning and click to run a quick test prompt to accept the terms.
 3. Or bypass auto-discovery completely by explicitly hardcoding a model:
 ```bash
-agent-smart-router -m "nvidia:meta/llama-3.2-11b-vision-instruct" -p "Hello"
+llm-proxy-cli -m "nvidia:meta/llama-3.2-11b-vision-instruct" -p "Hello"
 ```
 
 ## 🧑‍💻 Developer & Contributions
 Developed by Kerem Barbaros Karnabat ([@cadakerem](https://github.com/cadakerem)).
 
-> **Note on Repository Structure:** The core routing logic, dynamic model discovery, and circuit breaker patterns are entirely contained within `agent_smart_router.py` to ensure maximum portability. Unit tests are located in the `tests/` directory, and `SKILL.md` provides instructions for integrating this tool as a native AI agent skill.
+> **Note on Repository Structure:** The core routing logic, dynamic model discovery, and circuit breaker patterns are entirely contained within `llm_proxy_cli.py` to ensure maximum portability. Unit tests are located in the `tests/` directory, and `SKILL.md` provides instructions for integrating this tool as a native AI agent skill.
 
 Contributions, issues, and feature requests are welcome! Feel free to check the [Issues page](../../issues).
 

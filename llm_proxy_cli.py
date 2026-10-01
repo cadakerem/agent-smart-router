@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import os
 import json
 import time
@@ -61,7 +61,7 @@ PROVIDERS = {
 #
 # Usage: pass "provider:auto-smart" or "provider:auto-fast" instead of a
 # hardcoded model name, e.g.
-#   agent-smart-router -m "groq:auto-smart,nvidia:auto-fast" -p "..."
+#   llm-proxy-cli -m "groq:auto-smart,nvidia:auto-fast" -p "..."
 # ("auto" and "auto-max" are kept as aliases of "auto-smart" for backwards
 # compatibility with existing scripts/cron jobs.)
 #

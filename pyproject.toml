@@ -1,9 +1,9 @@
-[build-system]
+﻿[build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agent-smart-router"
+name = "llm-proxy-cli"
 version = "0.1.2"
 authors = [
   { name="Kerem Barbaros Karnabat", email="kbarbaros@hotmail.com" }
@@ -23,6 +23,6 @@ dependencies = [
 ]
 
 [project.scripts]
-agent-smart-router = "agent_smart_router:main"
+llm-proxy-cli = "llm_proxy_cli:main"
 
 
