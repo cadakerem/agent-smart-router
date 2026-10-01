@@ -33,6 +33,11 @@ jobs:
       - name: Build a binary wheel and a source tarball
         run: python -m build
 
+      - name: Check built wheel matches tag
+        run: |
+          VERSION=
+          unzip -p dist/*.whl llm_proxy_cli.py | grep -q "__version__ = \"\""
+
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
