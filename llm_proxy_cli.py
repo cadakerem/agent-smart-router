@@ -9,7 +9,7 @@ import logging
 from openai import OpenAI
 from filelock import FileLock, Timeout
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"
 
 # Optional import for anthropic
 try:
@@ -43,14 +43,15 @@ AUTO_DISCOVERY_TIMEOUT = 5        # seconds - keep the "auto" resolve snappy
 
 def get_api_key(provider):
     keys_file = os.path.join(get_config_dir(), "keys.json")
+    keys = {}
     if os.path.exists(keys_file):
         try:
             with open(keys_file, 'r', encoding='utf-8') as f:
                 keys = json.load(f)
-            env_name = f"{provider.upper()}_API_KEY"
         except Exception:
             pass
-    return os.environ.get(f"{provider.upper()}_API_KEY") or (keys.get(env_name) if 'keys' in locals() else None)
+    env_name = f"{provider.upper()}_API_KEY"
+    return os.environ.get(env_name) or keys.get(env_name)
 
 
 PROVIDERS = {
