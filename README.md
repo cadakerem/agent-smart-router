@@ -53,14 +53,12 @@ The Smart Router intercepts this behavior automatically and will print a clear w
 agent-smart-router -m "nvidia:meta/llama-3.2-11b-vision-instruct" -p "Hello"
 ```
 
-## 🤝 Contributing
-Contributions, issues, and feature requests are welcome!
+## 🧑‍💻 Developer & Contributions
+Developed by Kerem Barbaros Karnabat (@cadakerem).
 
-1. Fork the repository.
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
-4. Push to the branch (`git push origin feature/AmazingFeature`).
-5. Open a Pull Request.
+> **Note on Repository Structure:** [TODO: Add any specific notes about the repository structure here, e.g., source vs build artifacts.]
+
+Contributions, issues, and feature requests are welcome! Feel free to check the [Issues page](../../issues).
 
 ## 📜 License
 This project is licensed under the [MIT License](LICENSE).
