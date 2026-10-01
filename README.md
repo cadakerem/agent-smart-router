@@ -35,14 +35,33 @@ pip install llm-proxy-cli
 
 ## 💻 Usage
 
-```bash
-# Example command
-# Heavy Coding Task (Nvidia Laguna -> Groq Fallback)
-llm-proxy-cli -m "nvidia:poolside/laguna-xs-2.1,groq:groq/compound" -p "Write a python script to parse logs."
+Araç, model isimlerini ezberlemene gerek kalmadan **otomatik** olarak en iyi modeli bulacak şekilde tasarlanmıştır (uto-smart ve uto-fast).
 
-# Auto Model Discovery
-llm-proxy-cli -m "groq:auto-smart" -p "Explain quantum entanglement."
-```
+### 1. Otomatik Model Seçimi (Önerilen)
+Hangi modelin en iyi olduğunu veya API\'da güncel olduğunu düşünmek yerine, sadece uto-smart (zorlu kodlama/mantık işleri için) veya uto-fast (hızlı işler için) kullanın.
+
+`ash
+# Nvidia üzerindeki en akıllı modeli otomatik seçer (Örn: Nemotron veya Llama 3.1 405B)
+llm-proxy-cli -m "nvidia:auto-smart" -p "Bana bir React butonu yaz."
+
+# Groq üzerindeki en hızlı modeli otomatik seçer
+llm-proxy-cli -m "groq:auto-fast" -p "Bu metni özetle."
+`
+
+### 2. Zincirleme Otomatik Fallback (Yedekleme)
+Nvidia çökerse veya kota dolarsa saniyesinde Groq\'un en iyi modeline geçiş yapsın isterseniz araya virgül koymanız yeterli:
+
+`ash
+llm-proxy-cli -m "nvidia:auto-smart,groq:auto-smart" -p "Python scriptini refactor et."
+`
+
+### 3. Spesifik / Manuel Model Kullanımı
+Eğer özellikle kullanmak istediğiniz belirli bir model varsa, eskisi gibi doğrudan adını da yazabilirsiniz:
+
+`ash
+# Laguna modelini kullan, çökerse Groq\'taki özel bir modele geç
+llm-proxy-cli -m "nvidia:poolside/laguna-xs-2.1,groq:groq/compound" -p "Kuantum dolanıklığını açıkla."
+`
 
 ### ⚠️ Troubleshooting & Known Quirks: Nvidia EULA (404 Not Found)
 Nvidia NIM requires users to manually accept the **End User License Agreement (EULA)** for certain models on their website before using them via API. If you haven't accepted the EULA for a dynamically discovered model, Nvidia returns a cryptic `404 Not Found` error.
