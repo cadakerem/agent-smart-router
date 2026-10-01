@@ -26,7 +26,15 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+def get_config_dir():
+    d = os.path.expanduser("~/.config/llm-proxy-cli")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+def get_cache_dir():
+    d = os.path.expanduser("~/.cache/llm-proxy-cli")
+    os.makedirs(d, exist_ok=True)
+    return d
 
 # --- Auto model discovery config ---
 AUTO_CACHE_TTL = 24 * 60 * 60     # refresh discovery at most once per day
@@ -34,7 +42,7 @@ AUTO_DISCOVERY_TIMEOUT = 5        # seconds - keep the "auto" resolve snappy
 
 
 def get_api_key(provider):
-    keys_file = os.path.join(SCRIPT_DIR, "keys.json")
+    keys_file = os.path.join(get_config_dir(), "keys.json")
     if os.path.exists(keys_file):
         try:
             with open(keys_file, 'r', encoding='utf-8') as f:
@@ -91,7 +99,14 @@ def _is_chat_candidate(model_id):
 def _score_model_smart(model_id):
     """Higher score = bigger / newer / more capable. Used by auto-smart."""
     name = model_id.lower()
+    # Strip dates like 2024-08-06 or context sizes like 32768
+    name = re.sub(r'20\d{2}[-]?\d{2}[-]?\d{2}', '', name)
+    name = re.sub(r'\d{4,}', '', name)
     score = 0.0
+    
+    if "opus" in name: score += 50
+    elif "sonnet" in name: score += 40
+    elif "haiku" in name: score += 30
 
     # Parameter size, e.g. "8b", "70b", "405b" -> biggest wins, weighted heavily.
     size_matches = re.findall(r'(\d+(?:\.\d+)?)\s*b(?!\w)', name)
@@ -122,7 +137,12 @@ def _score_model_fast(model_id):
     NON_CHAT_KEYWORDS models are filtered out before this ever runs, so
     "smallest wins" can't land on a non-chat model anymore."""
     name = model_id.lower()
+    name = re.sub(r'20\d{2}[-]?\d{2}[-]?\d{2}', '', name)
+    name = re.sub(r'\d{4,}', '', name)
     score = 0.0
+
+    if "haiku" in name: score += 20
+    elif "sonnet" in name: score += 10
 
     size_matches = re.findall(r'(\d+(?:\.\d+)?)\s*b(?!\w)', name)
     if size_matches:
@@ -149,7 +169,7 @@ _SCORERS = {"smart": _score_model_smart, "fast": _score_model_fast}
 
 
 def _auto_cache_path(provider, mode):
-    return os.path.join(SCRIPT_DIR, f"auto_models_cache_{provider}_{mode}.json")
+    return os.path.join(get_cache_dir(), f"auto_models_cache_{provider}_{mode}.json")
 
 
 def _load_auto_cache(provider, mode):
@@ -263,8 +283,8 @@ class CircuitBreaker:
         self.max_failures = max_failures
         self.cooldown_seconds = cooldown_seconds
         safe_proj = "".join([c if c.isalnum() else "_" for c in project_id])
-        self.circuit_file = os.path.join(SCRIPT_DIR, f"circuit_breaker_{safe_proj}.json")
-        self.lock_file = os.path.join(SCRIPT_DIR, f"circuit_breaker_{safe_proj}.json.lock")
+        self.circuit_file = os.path.join(get_cache_dir(), f"circuit_breaker_{safe_proj}.json")
+        self.lock_file = os.path.join(get_cache_dir(), f"circuit_breaker_{safe_proj}.json.lock")
 
     def load(self):
         for _ in range(3):
@@ -384,7 +404,7 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
                 if provider == "anthropic":
                     if not HAS_ANTHROPIC:
                         raise ImportError("Anthropic package is missing. 'pip install anthropic' required.")
-                    client = anthropic.Anthropic(api_key=provider_config["api_key"], timeout=model_timeout)
+                    client = anthropic.Anthropic(api_key=provider_config["api_key"], timeout=model_timeout, max_retries=0)
                     with client.messages.stream(
                         model=current_model, max_tokens=4096,
                         messages=[{"role": "user", "content": prompt}], temperature=0.7
@@ -393,7 +413,7 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
                             full_content += text
                 else:
                     client = OpenAI(
-                        base_url=provider_config["base_url"], api_key=provider_config["api_key"], timeout=model_timeout
+                        base_url=provider_config["base_url"], api_key=provider_config["api_key"], timeout=model_timeout, max_retries=0
                     )
                     extra_body = {"chat_template_kwargs": {"enable_thinking": True}} if (provider == "nvidia" and "nemotron" in current_model.lower()) else {}
                     completion = client.chat.completions.create(
@@ -417,12 +437,15 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
                 error_msg = str(e).lower()
                 logger.error(f"Attempt {attempt+1} failed for {resolved_key}: {str(e)}")
                 cb.record_failure(resolved_key)
-                if "404" in error_msg or "not found" in error_msg or "auth" in error_msg: break
+                
+                status_code = getattr(e, "status_code", None)
+                if status_code in (429, 404, 401, 403) or "404" in error_msg or "not found" in error_msg or "auth" in error_msg:
+                    break
+                
                 if attempt == max_retries - 1: break
                 time.sleep((2 ** attempt) + random.uniform(0.1, 1.5))
 
-    logger.error("All fallback models failed, timed out, or are in cooldown.")
-    sys.exit(1)
+    raise RuntimeError("All fallback models failed, timed out, or are in cooldown.")
 
 
 def main():
@@ -460,10 +483,12 @@ def main():
         sys.exit(1)
 
     cb = CircuitBreaker(args.project, args.max_failures, args.cooldown)
-    response = query_ai(args.models, prompt_text, cb, force_refresh_auto=args.refresh_models)
-
-    # Print the final LLM response to stdout so it can be piped properly
-    print(response)
+    try:
+        response = query_ai(args.models, prompt_text, cb, force_refresh_auto=args.refresh_models)
+        print(response)
+    except Exception as e:
+        logger.error(str(e))
+        sys.exit(1)
 
 
 if __name__ == "__main__":

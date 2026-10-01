@@ -1,5 +1,9 @@
 # LLM Proxy CLI
 
+![CI Status](https://img.shields.io/github/actions/workflow/status/cadakerem/llm-proxy-cli/ci.yml?branch=master&label=CI&logo=github)
+![PyPI Version](https://img.shields.io/pypi/v/llm-proxy-cli?color=blue&logo=pypi)
+![License](https://img.shields.io/github/license/cadakerem/llm-proxy-cli)
+
 > A lightweight, fault-tolerant CLI tool for delegating LLM tasks to expert models across multiple providers (Nvidia NIM, Groq, OpenAI, Anthropic Claude, Gemini).
 
 
@@ -32,6 +36,17 @@ pip install llm-proxy-cli
 # cd llm-proxy-cli
 # pip install -e .
 ```
+
+## 🔑 Configuration & API Keys
+
+The router looks for API keys in your environment variables or in ~/.config/llm-proxy-cli/keys.json.
+
+Supported environment variables:
+- NVIDIA_API_KEY
+- GROQ_API_KEY
+- OPENAI_API_KEY
+- ANTHROPIC_API_KEY
+- GEMINI_API_KEY
 
 ## 💻 Usage
 
