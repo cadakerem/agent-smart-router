@@ -197,3 +197,38 @@ def test_query_ai_resolves_auto_alias_before_calling_provider(monkeypatch, mock_
     # circuit breaker must key on the resolved model, never on the literal "auto-smart" alias
     mock_cb.check_health.assert_called_with("groq:resolved-model-xyz")
     mock_cb.record_success.assert_called_once_with("groq:resolved-model-xyz")
+
+
+def test_query_ai_streaming_output(capsys, monkeypatch, mock_cb):
+    """Test that stream_out=True sends reasoning to stderr and content to stdout, exactly once."""
+    monkeypatch.setitem(router.PROVIDERS, "groq", {"base_url": "dummy", "api_key": "key"})
+    
+    mock_client = MagicMock()
+    mock_chunk1 = MagicMock()
+    mock_chunk1.choices = [MagicMock()]
+    mock_chunk1.choices[0].delta.reasoning_content = "thinking..."
+    mock_chunk1.choices[0].delta.content = ""
+    
+    mock_chunk2 = MagicMock()
+    mock_chunk2.choices = [MagicMock()]
+    mock_chunk2.choices[0].delta.reasoning_content = ""
+    mock_chunk2.choices[0].delta.content = "hello world"
+    
+    mock_client.chat.completions.create.return_value = [mock_chunk1, mock_chunk2]
+    
+    factory = openai_factory({"dummy": mock_client})
+    with patch.object(router, "OpenAI", side_effect=factory):
+        response = router.query_ai("groq:llama", "hi", mock_cb, stream_out=True)
+        
+    captured = capsys.readouterr()
+    
+    # 1. Stdout must only contain "hello world" (no reasoning)
+    assert "hello world" in captured.out
+    assert "thinking..." not in captured.out
+    
+    # 2. Stderr must contain the reasoning
+    assert "thinking..." in captured.err
+    
+    # 3. The returned string still contains everything for library usage
+    assert "hello world" in response
+    assert "thinking..." in response

@@ -9,7 +9,7 @@ import logging
 from openai import OpenAI
 from filelock import FileLock, Timeout
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 # Optional import for anthropic
 try:
@@ -417,7 +417,6 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
                     ) as stream:
                         for text in stream.text_stream:
                             if stream_out:
-                                import sys
                                 sys.stdout.write(text)
                                 sys.stdout.flush()
                             full_content += text
@@ -436,13 +435,11 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
                         if reasoning:
                             full_reasoning += reasoning
                             if stream_out:
-                                import sys
                                 sys.stderr.write(reasoning)
                                 sys.stderr.flush()
                         content = chunk.choices[0].delta.content
                         if content:
                             if stream_out:
-                                import sys
                                 sys.stdout.write(content)
                                 sys.stdout.flush()
                             full_content += content
@@ -456,6 +453,9 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
             except Exception as e:
                 error_msg = str(e).lower()
                 logger.error(f"Attempt {attempt+1} failed for {resolved_key}: {str(e)}")
+                if stream_out and (full_content or full_reasoning):
+                    sys.stderr.write(f"\n[STREAM INTERRUPTED: {str(e)} - FALLBACK TRIGGERED]\n")
+                    sys.stderr.flush()
                 status_code = getattr(e, "status_code", None)
                 if status_code in (404, 401, 403) or "404" in error_msg or "not found" in error_msg or "auth" in error_msg:
                     break
@@ -474,7 +474,7 @@ def main():
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
 
-    parser = argparse.ArgumentParser(description="Smart Router: A fault-tolerant CLI tool for LLM delegation.")
+    parser = argparse.ArgumentParser(description="LLM Proxy CLI: A fault-tolerant CLI tool for LLM delegation.")
     parser.add_argument("-v", "--version", action="version", version=f"LLM Proxy CLI v{__version__}")
     parser.add_argument("-m", "--models", required=True, help="Comma-separated list of provider:model fallbacks (e.g. nvidia:nemotron,groq:llama3, or groq:auto-smart / groq:auto-fast).")
     parser.add_argument("-p", "--prompt", help="The prompt text to send to the model.")
@@ -506,9 +506,8 @@ def main():
 
     cb = CircuitBreaker(args.project, args.max_failures, args.cooldown)
     try:
-        response = query_ai(args.models, prompt_text, cb, force_refresh_auto=args.refresh_models, stream_out=True)
-        if not sys.stdout.isatty():
-            print(response)
+        query_ai(args.models, prompt_text, cb, force_refresh_auto=args.refresh_models, stream_out=True)
+        print()
     except Exception as e:
         logger.error(str(e))
         sys.exit(1)
