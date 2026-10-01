@@ -48,11 +48,9 @@ def get_api_key(provider):
             with open(keys_file, 'r', encoding='utf-8') as f:
                 keys = json.load(f)
             env_name = f"{provider.upper()}_API_KEY"
-            if keys.get(env_name):
-                return keys[env_name]
         except Exception:
             pass
-    return os.environ.get(f"{provider.upper()}_API_KEY")
+    return os.environ.get(f"{provider.upper()}_API_KEY") or (keys.get(env_name) if 'keys' in locals() else None)
 
 
 PROVIDERS = {
@@ -99,7 +97,11 @@ def _is_chat_candidate(model_id):
 def _score_model_smart(model_id):
     """Higher score = bigger / newer / more capable. Used by auto-smart."""
     name = model_id.lower()
-    # Strip dates like 2024-08-06 or context sizes like 32768
+    # Handle MoE like 8x7b -> 56b
+    def _moe(m):
+        return str(float(m.group(1)) * float(m.group(2))) + 'b'
+    name = re.sub(r'(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*b', _moe, name)
+    # Strip dates and huge context
     name = re.sub(r'20\d{2}[-]?\d{2}[-]?\d{2}', '', name)
     name = re.sub(r'\d{4,}', '', name)
     score = 0.0
@@ -108,35 +110,36 @@ def _score_model_smart(model_id):
     elif "sonnet" in name: score += 40
     elif "haiku" in name: score += 30
 
-    # Parameter size, e.g. "8b", "70b", "405b" -> biggest wins, weighted heavily.
+    # Version extraction (handle 3-5 as 3.5 for claude/llama)
+    name_wo_size = re.sub(r'\d+(?:\.\d+)?\s*b(?!\w)', '', name)
+    ver_str = name_wo_size.replace('_', '-').replace('-r', '-')
+    ver_matches = re.findall(r'(\d+(?:[-.]\d+)*)', ver_str)
+    best_ver = 0.0
+    for v in ver_matches:
+        parts = v.replace('-', '.').split('.')
+        val = float(f"{parts[0]}.{parts[1]}") if len(parts) >= 2 else (float(parts[0]) if parts[0] else 0.0)
+        best_ver = max(best_ver, val)
+    score += best_ver * 5
+
+    # Parameter size
     size_matches = re.findall(r'(\d+(?:\.\d+)?)\s*b(?!\w)', name)
     if size_matches:
         score += max(float(s) for s in size_matches) * 10
-        name_wo_size = re.sub(r'\d+(?:\.\d+)?\s*b(?!\w)', '', name)
-    else:
-        name_wo_size = name
-
-    # Any remaining digits are treated as generation/version numbers,
-    # e.g. "llama-4", "gemini-2.5", "v3.3" -> higher wins.
-    version_matches = re.findall(r'(\d+(?:\.\d+)?)', name_wo_size)
-    if version_matches:
-        score += max(float(v) for v in version_matches) * 5
 
     for kw, bonus in (("instruct", 3), ("versatile", 3), ("reasoning", 4), ("chat", 1)):
-        if kw in name:
-            score += bonus
+        if kw in name: score += bonus
     for kw, penalty in (("mini", -2), ("lite", -2), ("tiny", -3), ("preview", -1), ("deprecated", -100)):
-        if kw in name:
-            score += penalty
+        if kw in name: score += penalty
 
     return score
 
 
 def _score_model_fast(model_id):
-    """Higher score = smaller / snappier chat model. Used by auto-fast.
-    NON_CHAT_KEYWORDS models are filtered out before this ever runs, so
-    "smallest wins" can't land on a non-chat model anymore."""
+    """Higher score = smaller / snappier chat model. Used by auto-fast."""
     name = model_id.lower()
+    def _moe(m):
+        return str(float(m.group(1)) * float(m.group(2))) + 'b'
+    name = re.sub(r'(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*b', _moe, name)
     name = re.sub(r'20\d{2}[-]?\d{2}[-]?\d{2}', '', name)
     name = re.sub(r'\d{4,}', '', name)
     score = 0.0
@@ -144,23 +147,24 @@ def _score_model_fast(model_id):
     if "haiku" in name: score += 20
     elif "sonnet" in name: score += 10
 
+    name_wo_size = re.sub(r'\d+(?:\.\d+)?\s*b(?!\w)', '', name)
+    ver_str = name_wo_size.replace('_', '-').replace('-r', '-')
+    ver_matches = re.findall(r'(\d+(?:[-.]\d+)*)', ver_str)
+    best_ver = 0.0
+    for v in ver_matches:
+        parts = v.replace('-', '.').split('.')
+        val = float(f"{parts[0]}.{parts[1]}") if len(parts) >= 2 else (float(parts[0]) if parts[0] else 0.0)
+        best_ver = max(best_ver, val)
+    score += best_ver * 5
+
     size_matches = re.findall(r'(\d+(?:\.\d+)?)\s*b(?!\w)', name)
     if size_matches:
-        score -= max(float(s) for s in size_matches) * 10  # smaller size = higher score
-        name_wo_size = re.sub(r'\d+(?:\.\d+)?\s*b(?!\w)', '', name)
-    else:
-        name_wo_size = name
-
-    version_matches = re.findall(r'(\d+(?:\.\d+)?)', name_wo_size)
-    if version_matches:
-        score += max(float(v) for v in version_matches) * 5  # still prefer the newer generation
+        score -= max(float(s) for s in size_matches) * 10
 
     for kw, bonus in (("instant", 4), ("flash", 4), ("turbo", 4), ("mini", 3), ("lite", 3), ("small", 2), ("instruct", 1)):
-        if kw in name:
-            score += bonus
+        if kw in name: score += bonus
     for kw, penalty in (("preview", -1), ("deprecated", -100)):
-        if kw in name:
-            score += penalty
+        if kw in name: score += penalty
 
     return score
 
@@ -370,17 +374,19 @@ def parse_model(model_string, force_refresh_auto=False):
         if resolved:
             return provider, resolved
         logger.error(f"Auto-discovery unavailable for '{provider}' ({mode}) and no static fallback was given.")
-        return provider, model  # will fail fast in query_ai (model not found / no key)
+        return provider, None
 
     return provider, model
 
 
-def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeout=30, force_refresh_auto=False):
+def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeout=30, force_refresh_auto=False, stream_out=False):
     if isinstance(models_list, str):
         models_list = [m.strip() for m in models_list.split(',')]
 
     for current_model_str in models_list:
         provider, current_model = parse_model(current_model_str, force_refresh_auto=force_refresh_auto)
+        if not current_model:
+            continue
         # Circuit breaker tracks the *resolved* model, not the literal "auto" alias,
         # since "auto" can point at a different real model over time.
         resolved_key = f"{provider}:{current_model}"
@@ -410,6 +416,10 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
                         messages=[{"role": "user", "content": prompt}], temperature=0.7
                     ) as stream:
                         for text in stream.text_stream:
+                            if stream_out:
+                                import sys
+                                sys.stdout.write(text)
+                                sys.stdout.flush()
                             full_content += text
                 else:
                     client = OpenAI(
@@ -423,9 +433,19 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
                     for chunk in completion:
                         if not chunk.choices: continue
                         reasoning = getattr(chunk.choices[0].delta, "reasoning_content", None)
-                        if reasoning: full_reasoning += reasoning
+                        if reasoning:
+                            full_reasoning += reasoning
+                            if stream_out:
+                                import sys
+                                sys.stderr.write(reasoning)
+                                sys.stderr.flush()
                         content = chunk.choices[0].delta.content
-                        if content: full_content += content
+                        if content:
+                            if stream_out:
+                                import sys
+                                sys.stdout.write(content)
+                                sys.stdout.flush()
+                            full_content += content
 
                 cb.record_success(resolved_key)
                 output = ""
@@ -436,10 +456,12 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
             except Exception as e:
                 error_msg = str(e).lower()
                 logger.error(f"Attempt {attempt+1} failed for {resolved_key}: {str(e)}")
-                cb.record_failure(resolved_key)
-                
                 status_code = getattr(e, "status_code", None)
-                if status_code in (429, 404, 401, 403) or "404" in error_msg or "not found" in error_msg or "auth" in error_msg:
+                if status_code in (404, 401, 403) or "404" in error_msg or "not found" in error_msg or "auth" in error_msg:
+                    break
+                if status_code != 429:
+                    cb.record_failure(resolved_key)
+                if status_code == 429:
                     break
                 
                 if attempt == max_retries - 1: break
@@ -453,7 +475,7 @@ def main():
         sys.stdout.reconfigure(encoding='utf-8')
 
     parser = argparse.ArgumentParser(description="Smart Router: A fault-tolerant CLI tool for LLM delegation.")
-    parser.add_argument("-v", "--version", action="version", version=f"Smart Router v{__version__}")
+    parser.add_argument("-v", "--version", action="version", version=f"LLM Proxy CLI v{__version__}")
     parser.add_argument("-m", "--models", required=True, help="Comma-separated list of provider:model fallbacks (e.g. nvidia:nemotron,groq:llama3, or groq:auto-smart / groq:auto-fast).")
     parser.add_argument("-p", "--prompt", help="The prompt text to send to the model.")
     parser.add_argument("-f", "--file", help="Path to a text file containing the prompt.")
@@ -484,8 +506,9 @@ def main():
 
     cb = CircuitBreaker(args.project, args.max_failures, args.cooldown)
     try:
-        response = query_ai(args.models, prompt_text, cb, force_refresh_auto=args.refresh_models)
-        print(response)
+        response = query_ai(args.models, prompt_text, cb, force_refresh_auto=args.refresh_models, stream_out=True)
+        if not sys.stdout.isatty():
+            print(response)
     except Exception as e:
         logger.error(str(e))
         sys.exit(1)

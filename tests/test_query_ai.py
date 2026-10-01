@@ -159,7 +159,7 @@ def test_query_ai_exits_when_every_model_fails(monkeypatch, mock_cb):
     failing_client.chat.completions.create.side_effect = Exception("timeout")
     factory = openai_factory({GROQ_URL: failing_client})
     with patch.object(router, "OpenAI", side_effect=factory):
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(RuntimeError) as exc_info:
             router.query_ai("groq:llama-3.3-70b-versatile", "hi", mock_cb, max_retries=2)
 
     assert exc_info.value.code == 1
