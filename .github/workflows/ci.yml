@@ -1,4 +1,4 @@
-name: CI Smoke Test
+﻿name: CI Smoke Test
 
 on:
   push:
@@ -31,5 +31,5 @@ jobs:
         
     - name: Smoke Test CLI
       run: |
-        agent-smart-router --help
+        llm-proxy-cli --help
 

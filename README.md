@@ -35,32 +35,32 @@ pip install llm-proxy-cli
 
 ## 💻 Usage
 
-Araç, model isimlerini ezberlemene gerek kalmadan **otomatik** olarak en iyi modeli bulacak şekilde tasarlanmıştır (uto-smart ve uto-fast).
+The tool is designed to **automatically** discover and use the best model without you having to memorize model names (using uto-smart and uto-fast).
 
-### 1. Otomatik Model Seçimi (Önerilen)
-Hangi modelin en iyi olduğunu veya API\'da güncel olduğunu düşünmek yerine, sadece uto-smart (zorlu kodlama/mantık işleri için) veya uto-fast (hızlı işler için) kullanın.
+### 1. Automatic Model Selection (Recommended)
+Instead of guessing which model is currently the best or active on the API, simply use uto-smart (for complex coding/reasoning tasks) or uto-fast (for quick tasks).
 
 `ash
-# Nvidia üzerindeki en akıllı modeli otomatik seçer (Örn: Nemotron veya Llama 3.1 405B)
-llm-proxy-cli -m "nvidia:auto-smart" -p "Bana bir React butonu yaz."
+# Auto-select the smartest model on Nvidia (e.g., Nemotron or Llama 3.1 405B)
+llm-proxy-cli -m "nvidia:auto-smart" -p "Write a React button."
 
-# Groq üzerindeki en hızlı modeli otomatik seçer
-llm-proxy-cli -m "groq:auto-fast" -p "Bu metni özetle."
+# Auto-select the fastest model on Groq
+llm-proxy-cli -m "groq:auto-fast" -p "Summarize this text."
 `
 
-### 2. Zincirleme Otomatik Fallback (Yedekleme)
-Nvidia çökerse veya kota dolarsa saniyesinde Groq\'un en iyi modeline geçiş yapsın isterseniz araya virgül koymanız yeterli:
+### 2. Chained Automatic Fallback
+If Nvidia goes down or hits a rate limit, you can instantly fall back to Groq's best model by separating them with a comma:
 
 `ash
-llm-proxy-cli -m "nvidia:auto-smart,groq:auto-smart" -p "Python scriptini refactor et."
+llm-proxy-cli -m "nvidia:auto-smart,groq:auto-smart" -p "Refactor this python script."
 `
 
-### 3. Spesifik / Manuel Model Kullanımı
-Eğer özellikle kullanmak istediğiniz belirli bir model varsa, eskisi gibi doğrudan adını da yazabilirsiniz:
+### 3. Specific / Manual Model Selection
+If you have a specific model you want to use, you can still hardcode it directly:
 
 `ash
-# Laguna modelini kullan, çökerse Groq\'taki özel bir modele geç
-llm-proxy-cli -m "nvidia:poolside/laguna-xs-2.1,groq:groq/compound" -p "Kuantum dolanıklığını açıkla."
+# Use Laguna, and fallback to a specific Groq model if it fails
+llm-proxy-cli -m "nvidia:poolside/laguna-xs-2.1,groq:groq/compound" -p "Explain quantum entanglement."
 `
 
 ### ⚠️ Troubleshooting & Known Quirks: Nvidia EULA (404 Not Found)
