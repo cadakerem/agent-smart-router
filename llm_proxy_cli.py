@@ -5,11 +5,12 @@ import time
 import random
 import re
 import argparse
+import platformdirs
 import logging
 from openai import OpenAI
 from filelock import FileLock, Timeout
 
-__version__ = "0.5.4"
+__version__ = "0.5.5"
 
 # Optional import for anthropic
 try:
@@ -27,12 +28,12 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
 def get_config_dir():
-    d = os.path.expanduser("~/.config/llm-proxy-cli")
+    d = platformdirs.user_config_dir("llm-proxy-cli")
     os.makedirs(d, exist_ok=True)
     return d
 
 def get_cache_dir():
-    d = os.path.expanduser("~/.cache/llm-proxy-cli")
+    d = platformdirs.user_cache_dir("llm-proxy-cli")
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -246,7 +247,7 @@ def discover_best_model(provider, mode="smart", force_refresh=False):
 
     provider_config = PROVIDERS.get(provider)
     if not provider_config or not provider_config.get("api_key"):
-        logger.warning(f"Auto-discovery: provider '{provider}' not configured or missing API key.")
+        logger.error(f"{provider}: API key not found. Set {provider.upper()}_API_KEY or add it to {get_config_dir()}/keys.json")
         return None
 
     try:
@@ -382,7 +383,6 @@ def parse_model(model_string, force_refresh_auto=False):
         resolved = discover_best_model(provider, mode=mode, force_refresh=force_refresh_auto)
         if resolved:
             return provider, resolved
-        logger.error(f"Auto-discovery unavailable for '{provider}' ({mode}) and no static fallback was given.")
         return provider, None
 
     return provider, model
@@ -392,6 +392,7 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
     if isinstance(models_list, str):
         models_list = [m.strip() for m in models_list.split(',')]
 
+    models_attempted = 0
     for current_model_str in models_list:
         provider, current_model = parse_model(current_model_str, force_refresh_auto=force_refresh_auto)
         if not current_model:
@@ -411,6 +412,7 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
 
         is_nemotron = "nemotron" in current_model.lower()
         model_timeout = 90 if is_nemotron else base_timeout
+        models_attempted += 1
 
         for attempt in range(max_retries):
             try:
@@ -476,6 +478,8 @@ def query_ai(models_list, prompt, cb: CircuitBreaker, max_retries=2, base_timeou
                 if attempt == max_retries - 1: break
                 time.sleep((2 ** attempt) + random.uniform(0.1, 1.5))
 
+    if models_attempted == 0:
+        raise RuntimeError("No models could be used. Check your API keys and configuration.")
     raise RuntimeError("All fallback models failed, timed out, or are in cooldown.")
 
 
