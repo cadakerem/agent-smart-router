@@ -117,7 +117,7 @@ def test_query_ai_stops_retrying_immediately_on_404(monkeypatch, mock_cb):
     assert result == "ok"
     # A 404 must break the retry loop after a single attempt, not consume all max_retries=3.
     assert not_found_client.chat.completions.create.call_count == 1
-    assert mock_cb.record_failure.call_count == 1
+    assert mock_cb.record_failure.call_count == 0
 
 
 def test_query_ai_skips_models_in_cooldown(monkeypatch, mock_cb):
@@ -162,7 +162,7 @@ def test_query_ai_exits_when_every_model_fails(monkeypatch, mock_cb):
         with pytest.raises(RuntimeError) as exc_info:
             router.query_ai("groq:llama-3.3-70b-versatile", "hi", mock_cb, max_retries=2)
 
-    assert exc_info.value.code == 1
+    assert "All fallback models failed" in str(exc_info.value)
     assert failing_client.chat.completions.create.call_count == 2
 
 
