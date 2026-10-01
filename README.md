@@ -35,33 +35,33 @@ pip install llm-proxy-cli
 
 ## 💻 Usage
 
-The tool is designed to **automatically** discover and use the best model without you having to memorize model names (using uto-smart and uto-fast).
+The tool is designed to **automatically** discover and use the best model without you having to memorize model names (using `auto-smart` and `auto-fast`).
 
 ### 1. Automatic Model Selection (Recommended)
-Instead of guessing which model is currently the best or active on the API, simply use uto-smart (for complex coding/reasoning tasks) or uto-fast (for quick tasks).
+Instead of guessing which model is currently the best or active on the API, simply use `auto-smart` (for complex coding/reasoning tasks) or `auto-fast` (for quick tasks).
 
-`ash
+```bash
 # Auto-select the smartest model on Nvidia (e.g., Nemotron or Llama 3.1 405B)
 llm-proxy-cli -m "nvidia:auto-smart" -p "Write a React button."
 
 # Auto-select the fastest model on Groq
 llm-proxy-cli -m "groq:auto-fast" -p "Summarize this text."
-`
+```
 
 ### 2. Chained Automatic Fallback
 If Nvidia goes down or hits a rate limit, you can instantly fall back to Groq's best model by separating them with a comma:
 
-`ash
+```bash
 llm-proxy-cli -m "nvidia:auto-smart,groq:auto-smart" -p "Refactor this python script."
-`
+```
 
 ### 3. Specific / Manual Model Selection
 If you have a specific model you want to use, you can still hardcode it directly:
 
-`ash
+```bash
 # Use Laguna, and fallback to a specific Groq model if it fails
 llm-proxy-cli -m "nvidia:poolside/laguna-xs-2.1,groq:groq/compound" -p "Explain quantum entanglement."
-`
+```
 
 ### ⚠️ Troubleshooting & Known Quirks: Nvidia EULA (404 Not Found)
 Nvidia NIM requires users to manually accept the **End User License Agreement (EULA)** for certain models on their website before using them via API. If you haven't accepted the EULA for a dynamically discovered model, Nvidia returns a cryptic `404 Not Found` error.
