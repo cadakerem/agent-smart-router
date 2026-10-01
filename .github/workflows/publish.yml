@@ -41,10 +41,13 @@ jobs:
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
-      - name: Verify published package
+      - name: Verify published package (fresh env)
         run: |
-          # Wait a few seconds for PyPI index to update
-          sleep 10
           VERSION=${GITHUB_REF_NAME#v}
-          python -m pip install --no-cache-dir llm-proxy-cli==$VERSION
-          python -c "import llm_proxy_cli; assert llm_proxy_cli.__version__ == '$VERSION'"
+          cd "$RUNNER_TEMP"
+          python -m venv verify-env
+          for i in $(seq 1 12); do
+            ./verify-env/bin/pip install --no-cache-dir "llm-proxy-cli==$VERSION" && break
+            echo "Not on PyPI yet, retry $i..."; sleep 10
+          done
+          ./verify-env/bin/python -c "import llm_proxy_cli as m; assert m.__version__ == '$VERSION', m.__version__"
