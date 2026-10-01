@@ -57,7 +57,7 @@ agent-smart-router -m "nvidia:meta/llama-3.2-11b-vision-instruct" -p "Hello"
 ```
 
 ## 🧑‍💻 Developer & Contributions
-Developed by Kerem Barbaros Karnabat (@cadakerem).
+Developed by Kerem Barbaros Karnabat ([@cadakerem](https://github.com/cadakerem)).
 
 > **Note on Repository Structure:** The core routing logic, dynamic model discovery, and circuit breaker patterns are entirely contained within `agent_smart_router.py` to ensure maximum portability. Unit tests are located in the `tests/` directory, and `SKILL.md` provides instructions for integrating this tool as a native AI agent skill.
 
