@@ -24,17 +24,22 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies and pytest
-        run: python -m pip install pytest build anyio
+      - name: Install package and test deps
+        run: python -m pip install -e . pytest build
 
       - name: Run tests
         run: python -m pytest tests/
-
-      - name: Install build tools
-        run: python -m pip install build
 
       - name: Build a binary wheel and a source tarball
         run: python -m build
 
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Verify published package
+        run: |
+          # Wait a few seconds for PyPI index to update
+          sleep 10
+          VERSION=${GITHUB_REF_NAME#v}
+          python -m pip install --no-cache-dir llm-proxy-cli==$VERSION
+          python -c "import llm_proxy_cli; assert llm_proxy_cli.__version__ == '$VERSION'"

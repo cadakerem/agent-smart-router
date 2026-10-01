@@ -13,7 +13,7 @@
 - **Active Liveness Verification**: Pings candidates with a minimal chat request to drop fake/gated models before they crash your task.
 - **Automatic Fallbacks**: Provide a comma-separated list of models. If one fails, it instantly falls back to the next.
 - **Circuit Breaker**: Built-in health tracking and cooldowns to prevent spamming dead endpoints.
-- **Reasoning Extraction**: Automatically extracts `reasoning_content` from natively supported models (e.g., O-series or Nemotron) and outputs them to stderr.
+- **Reasoning Extraction**: Automatically extracts `reasoning_content` from natively supported models (e.g., DeepSeek-R1 or Nemotron) and outputs them to stderr.
 - **Streaming Native**: Built on the official OpenAI SDK for fast and reliable streaming chunks.
 
 ## 🏗️ Architecture & Under the Hood
